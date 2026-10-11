@@ -1,0 +1,12 @@
+{
+  "name": "monitor-display",
+  "version": "0.1.0",
+  "description": "Minimal always-on secondary display: Spotify, Claude and ChatGPT usage",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "demo": "DEMO=1 node server.js"
+  },
+  "engines": { "node": ">=20" }
+}

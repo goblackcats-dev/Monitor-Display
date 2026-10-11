@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Monitor Display</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="bg"></div>
+<main>
+  <header>
+    <div id="clock">--:--</div>
+    <div id="date"></div>
+  </header>
+
+  <section id="player" class="idle">
+    <div id="art"><img id="artimg" alt=""></div>
+    <div id="meta">
+      <div id="title">Nothing playing</div>
+      <div id="artist"></div>
+      <div id="bar"><i id="fill"></i></div>
+      <div id="times"><span id="pos">0:00</span><span id="dur">0:00</span></div>
+      <div id="controls">
+        <button data-a="prev" aria-label="Previous">⏮</button>
+        <button id="pp" data-a="toggle" aria-label="Play/Pause">▶</button>
+        <button data-a="next" aria-label="Next">⏭</button>
+        <input id="vol" type="range" min="0" max="100" aria-label="Volume">
+      </div>
+      <a id="login" href="/auth/spotify/login" hidden>Connect Spotify</a>
+    </div>
+  </section>
+
+  <section id="usage">
+    <div class="tile" id="claude">
+      <svg class="ring" viewBox="0 0 100 100"><circle class="track" cx="50" cy="50" r="42"/><circle class="val" cx="50" cy="50" r="42"/></svg>
+      <div class="label">Claude Code · 5h</div>
+      <div class="big" data-k="big">–</div>
+      <div class="sub" data-k="sub"></div>
+      <div class="spark" data-k="spark"></div>
+      <div class="foot" data-k="foot"></div>
+    </div>
+    <div class="tile" id="chatgpt">
+      <svg class="ring" viewBox="0 0 100 100"><circle class="track" cx="50" cy="50" r="42"/><circle class="val" cx="50" cy="50" r="42"/></svg>
+      <div class="label">ChatGPT</div>
+      <div class="big" data-k="big">–</div>
+      <div class="sub" data-k="sub"></div>
+      <div class="spark" data-k="spark"></div>
+      <div class="foot" data-k="foot"></div>
+    </div>
+  </section>
+</main>
+<script src="app.js"></script>
+</body>
+</html>
