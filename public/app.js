@@ -110,20 +110,37 @@ function renderUsage() {
     $('[data-k=sub]', t).textContent = b.resetsAt ? `${b.limit ? Math.round(frac * 100) + '% · ' : ''}resets in ${fmtIn(b.resetsAt - now)}` : 'No active window';
     spark($('[data-k=spark]', t), c.days.map((d) => d.tokens));
     const sp = st.spend?.anthropic;
-    $('[data-k=foot]', t).textContent = `Today ${fmtTok(c.today)} · 7d ${fmtTok(c.week)}` + (sp && !sp.error ? ` · API ${money(sp.week)}/wk` : '');
+    const oa = st.spend?.openai, api = (sp && !sp.error ? sp.week : 0) + (oa && !oa.error ? oa.week : 0);
+    $('[data-k=foot]', t).textContent = `Today ${fmtTok(c.today)} · 7d ${fmtTok(c.week)}` + (api ? ` · API ${money(api)}/wk` : '');
   } else {
     ring(t, 0); $('[data-k=big]', t).textContent = '–';
     $('[data-k=sub]', t).textContent = 'No Claude Code logs found'; $('[data-k=foot]', t).textContent = 'Set CLAUDE_LOG_DIRS in .env';
   }
-  const g = st.chatgpt, u = $('#chatgpt');
-  ring(u, g.limit ? g.used / g.limit : 0);
-  $('[data-k=big]', u).textContent = `${g.used}`;
-  $('[data-k=sub]', u).textContent = `of ${g.limit} messages` + (g.resetsAt ? ` · resets in ${fmtIn(g.resetsAt - now)}` : '');
-  const oa = st.spend?.openai;
-  if (oa && !oa.error) { spark($('[data-k=spark]', u), oa.days); $('[data-k=foot]', u).textContent = `API ${money(oa.week)} this week`; }
-  else { $('[data-k=spark]', u).innerHTML = ''; $('[data-k=foot]', u).textContent = 'Manual counter · curl -X POST …/api/chatgpt/add'; }
+  renderTodos();
 }
 setInterval(renderUsage, 5000);
+
+// ---- to-do ----
+function renderTodos() {
+  const items = st?.todos || [];
+  const open = items.filter((i) => !i.done), done = items.filter((i) => i.done).slice(-2);
+  const shown = [...open.slice(0, 6), ...(open.length < 6 ? done : [])];
+  $('#todocount').textContent = open.length ? `· ${open.length}` : '';
+  $('#todoempty').hidden = items.length > 0;
+  const sig = JSON.stringify(shown.map((i) => [i.id, i.done, i.text]));
+  const list = $('#todolist');
+  if (list.dataset.sig === sig) return;
+  list.dataset.sig = sig;
+  list.innerHTML = shown.map((i) => `<li class="${i.done ? 'done' : ''}" data-id="${i.id}" data-done="${i.done ? 1 : 0}"><i></i><span></span></li>`).join('');
+  [...list.children].forEach((li, n) => { li.lastChild.textContent = shown[n].text; });
+  if (open.length > 6) list.insertAdjacentHTML('beforeend', `<li class="more">+${open.length - 6} more</li>`);
+}
+$('#todolist').addEventListener('click', async (e) => {
+  const li = e.target.closest('li[data-id]'); if (!li) return;
+  li.classList.toggle('done');
+  await fetch('/api/todos/toggle', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: li.dataset.id, done: li.dataset.done !== '1' }) }).catch(() => {});
+  poll();
+});
 
 // ---- polling ----
 async function poll() {

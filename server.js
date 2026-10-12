@@ -5,11 +5,20 @@ import { ROOT, num } from './lib/env.js';
 import * as spotify from './lib/spotify.js';
 import { claudeCodeUsage } from './lib/claudeLogs.js';
 import { openaiSpend, anthropicSpend } from './lib/spend.js';
-import { chatgptState, chatgptAdd, chatgptReset } from './lib/chatgpt.js';
-import { demoSpotify, demoControl, demoArt, demoUsage } from './lib/demo.js';
+import crypto from 'node:crypto';
+import { listTodos, setDone, clearDone } from './lib/todos.js';
+import { mcpRespond } from './lib/mcp.js';
+import { readJson, writeJson } from './lib/env.js';
+import { demoSpotify, demoControl, demoArt, demoUsage, demoTodos, demoToggle } from './lib/demo.js';
 
 const PORT = num(process.env.PORT, 8787);
 const DEMO = !!process.env.DEMO;
+// Secret path segment that protects the MCP endpoint. Set MCP_TOKEN, or one is generated and kept in data/.
+const MCP_TOKEN = process.env.MCP_TOKEN || (() => {
+  let t = readJson('mcp-token.json', null)?.token;
+  if (!t) { t = crypto.randomBytes(24).toString('base64url'); writeJson('mcp-token.json', { token: t }); }
+  return t;
+})();
 const PUBLIC = path.join(ROOT, 'public');
 const TYPES = { '.html': 'text/html', '.css': 'text/css', '.js': 'text/javascript', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon', '.woff2': 'font/woff2' };
 
@@ -25,7 +34,7 @@ async function usage() {
   const [anthropic, openai] = await Promise.all([anthropicSpend(), openaiSpend()]);
   usageCache = {
     at: Date.now(),
-    v: { claudeCode: claudeCodeUsage(), chatgpt: chatgptState(), spend: { anthropic: anthropic || null, openai: openai || null } },
+    v: { claudeCode: claudeCodeUsage(), spend: { anthropic: anthropic || null, openai: openai || null } },
   };
   return usageCache.v;
 }
@@ -43,20 +52,33 @@ const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host}`);
   const p = url.pathname;
   try {
+    // MCP connector: reachable through a tunnel, so it is gated by the secret in the URL instead of the host check.
+    if (p.startsWith('/mcp/')) {
+      const given = Buffer.from(p.slice(5));
+      const want = Buffer.from(MCP_TOKEN);
+      if (given.length !== want.length || !crypto.timingSafeEqual(given, want)) return send(res, 404, 'not found', 'text/plain');
+      if (req.method !== 'POST') return send(res, 405, { error: 'POST only' });
+      const r = mcpRespond(await readBody(req));
+      return r.body === null ? (res.writeHead(r.status), res.end()) : send(res, r.status, r.body);
+    }
     if (!isLocalHost(req.headers.host)) return send(res, 403, { error: 'forbidden' });
     if (req.method === 'POST' && req.headers.origin && !isLocalHost(new URL(req.headers.origin).host)) return send(res, 403, { error: 'bad origin' });
 
     if (p === '/api/state') {
       const [sp, us] = await Promise.all([DEMO ? demoSpotify() : spotify.nowPlaying(), usage()]);
-      return send(res, 200, { now: Date.now(), demo: DEMO, spotify: sp, ...us });
+      return send(res, 200, { now: Date.now(), demo: DEMO, spotify: sp, ...us, todos: DEMO ? demoTodos() : listTodos() });
     }
     if (p === '/api/spotify' && req.method === 'POST') {
       const { action, value } = await readBody(req);
       if (DEMO) demoControl(action, value); else await spotify.control(action, value);
       return send(res, 200, { ok: true });
     }
-    if (p === '/api/chatgpt/add' && req.method === 'POST') return send(res, 200, chatgptAdd(num(url.searchParams.get('n'), 1)));
-    if (p === '/api/chatgpt/reset' && req.method === 'POST') return send(res, 200, chatgptReset());
+    if (p === '/api/todos/toggle' && req.method === 'POST') {
+      const { id, done } = await readBody(req);
+      if (DEMO) demoToggle(id, done); else setDone(id, !!done);
+      return send(res, 200, { ok: true });
+    }
+    if (p === '/api/todos/clear-done' && req.method === 'POST') { if (!DEMO) clearDone(); return send(res, 200, { ok: true }); }
     if (p === '/api/demo-art') return send(res, 200, demoArt(url.searchParams.get('hue')), 'image/svg+xml');
 
     // Album art proxy: keeps the canvas colour-extraction CORS-safe.
@@ -95,4 +117,5 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`Monitor Display on http://127.0.0.1:${PORT}${DEMO ? '  (demo data)' : ''}`);
+  console.log(`To-do MCP endpoint path: /mcp/${MCP_TOKEN}   (put your tunnel's https host in front of it)`);
 });
