@@ -6,12 +6,18 @@ import * as spotify from './lib/spotify.js';
 import { claudeCodeUsage } from './lib/claudeLogs.js';
 import { openaiSpend, anthropicSpend } from './lib/spend.js';
 import crypto from 'node:crypto';
+import * as cast from './lib/cast.js';
+import { weather } from './lib/weather.js';
+import { calendar } from './lib/calendar.js';
+import { health } from './lib/health.js';
+import * as steps from './lib/steps.js';
 import { listTodos, setDone, clearDone } from './lib/todos.js';
 import { mcpRespond } from './lib/mcp.js';
 import { readJson, writeJson } from './lib/env.js';
 import { demoSpotify, demoControl, demoArt, demoUsage, demoTodos, demoToggle } from './lib/demo.js';
 
 const PORT = num(process.env.PORT, 8787);
+const BOOT = Date.now(); // the open page reloads itself when this changes, so updates show up without touching the Pi
 const DEMO = !!process.env.DEMO;
 // Secret path segment that protects the MCP endpoint. Set MCP_TOKEN, or one is generated and kept in data/.
 const MCP_TOKEN = process.env.MCP_TOKEN || (() => {
@@ -61,12 +67,23 @@ const server = http.createServer(async (req, res) => {
       const r = mcpRespond(await readBody(req));
       return r.body === null ? (res.writeHead(r.status), res.end()) : send(res, r.status, r.body);
     }
+    // Steps from an iPhone Shortcut: token in the path, like the MCP endpoint, so it also works over Tailscale.
+    if (p.startsWith('/api/steps/')) {
+      if (!steps.tokenMatches(p.slice('/api/steps/'.length))) return send(res, 404, 'not found', 'text/plain');
+      const n = req.method === 'POST' ? (await readBody(req)).steps : url.searchParams.get('steps');
+      return send(res, 200, { ok: true, steps: steps.setSteps(n) });
+    }
     if (!isLocalHost(req.headers.host)) return send(res, 403, { error: 'forbidden' });
     if (req.method === 'POST' && req.headers.origin && !isLocalHost(new URL(req.headers.origin).host)) return send(res, 403, { error: 'bad origin' });
 
     if (p === '/api/state') {
-      const [sp, us] = await Promise.all([DEMO ? demoSpotify() : spotify.nowPlaying(), usage()]);
-      return send(res, 200, { now: Date.now(), demo: DEMO, spotify: sp, ...us, todos: DEMO ? demoTodos() : listTodos() });
+      const [sp, us, wx, cal] = await Promise.all([
+        DEMO ? demoSpotify() : spotify.nowPlaying(), usage(),
+        DEMO ? { high: 72, low: 55, kind: 'partly', unit: 'F' } : weather(),
+        DEMO ? { next: { title: 'Design review', start: Date.now() + 25 * 60e3, end: Date.now() + 55 * 60e3 } } : calendar(),
+      ]);
+      const hl = DEMO ? { ok: true, issues: [] } : await health(cal?.error ? ['calendar'] : []);
+      return send(res, 200, { boot: BOOT, now: Date.now(), demo: DEMO, spotify: sp, ...us, weather: wx, steps: DEMO ? { steps: 6420 } : steps.todaySteps(), calendar: cal?.next ?? null, health: hl, todos: DEMO ? demoTodos() : listTodos() });
     }
     if (p === '/api/spotify' && req.method === 'POST') {
       const { action, value } = await readBody(req);
@@ -79,6 +96,14 @@ const server = http.createServer(async (req, res) => {
       return send(res, 200, { ok: true });
     }
     if (p === '/api/todos/clear-done' && req.method === 'POST') { if (!DEMO) clearDone(); return send(res, 200, { ok: true }); }
+    if (p === '/api/watch') {
+      if (req.method === 'GET') return send(res, 200, await cast.status());
+      const { action, url: link, value } = await readBody(req);
+      if (action === 'open') await cast.open(link);
+      else if (action === 'close') await cast.close();
+      else await cast.control(action, value);
+      return send(res, 200, await cast.status());
+    }
     if (p === '/api/demo-art') return send(res, 200, demoArt(url.searchParams.get('hue')), 'image/svg+xml');
 
     // Album art proxy: keeps the canvas colour-extraction CORS-safe.

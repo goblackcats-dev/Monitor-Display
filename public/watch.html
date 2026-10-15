@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Watch</title>
+<style>
+  :root { --bg:#07080b; --fg:#eceef2; --dim:#7b818c; --faint:#1a1d24; --accent:#8ab4ff; font-family: Inter, system-ui, -apple-system, "Segoe UI", sans-serif; }
+  * { box-sizing: border-box; margin: 0; }
+  body { background: var(--bg); color: var(--fg); min-height: 100dvh; padding: 20px 16px calc(24px + env(safe-area-inset-bottom)); max-width: 520px; margin: 0 auto; }
+  h1 { font-size: 22px; font-weight: 600; letter-spacing: -.02em; margin-bottom: 16px; }
+  form { display: flex; gap: 8px; }
+  input { flex: 1; min-width: 0; background: var(--faint); border: 1px solid #262a33; color: var(--fg); border-radius: 12px; padding: 14px; font-size: 16px; }
+  button { background: var(--faint); border: 1px solid #262a33; color: var(--fg); border-radius: 12px; padding: 14px; font-size: 16px; cursor: pointer; }
+  button:active { background: #262a33; }
+  button.go { background: var(--accent); color: #07080b; border: 0; font-weight: 600; padding: 14px 20px; }
+  #recent { margin-top: 14px; display: flex; flex-direction: column; gap: 6px; }
+  #recent button { text-align: left; color: var(--dim); font-size: 14px; padding: 10px 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #now { margin-top: 22px; }
+  #now h2 { font-size: 13px; color: var(--dim); font-weight: 500; text-transform: uppercase; letter-spacing: .06em; }
+  #title { margin: 6px 0 10px; font-size: 17px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #bar { height: 4px; background: var(--faint); border-radius: 4px; overflow: hidden; margin-bottom: 14px; }
+  #fill { display: block; height: 100%; width: 0; background: var(--accent); }
+  .row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 8px; }
+  .row button { padding: 16px 4px; }
+  .wide { width: 100%; }
+  #msg { margin-top: 14px; color: var(--dim); font-size: 14px; min-height: 1.4em; }
+  .hide { display: none; }
+</style>
+</head>
+<body>
+<h1>Watch on the Pi</h1>
+<form id="f">
+  <input id="u" type="url" inputmode="url" autocomplete="off" autocapitalize="off" placeholder="Paste a link" required>
+  <button class="go">Play</button>
+</form>
+<div id="recent"></div>
+
+<section id="now" class="hide">
+  <h2>Now showing</h2>
+  <div id="title"></div>
+  <div id="bar"><span id="fill"></span></div>
+  <div class="row">
+    <button data-a="seek" data-v="-30">−30s</button>
+    <button data-a="seek" data-v="-10">−10s</button>
+    <button data-a="seek" data-v="10">+10s</button>
+    <button data-a="seek" data-v="30">+30s</button>
+  </div>
+  <div class="row">
+    <button data-a="toggle">Play / Pause</button>
+    <button data-a="fullscreen">Fullscreen</button>
+    <button data-a="volume" data-v="-0.1">Vol −</button>
+    <button data-a="volume" data-v="0.1">Vol +</button>
+  </div>
+  <div class="row" style="grid-template-columns:1fr 1fr">
+    <button data-a="mute">Mute</button>
+    <button data-a="tap">Tap screen centre</button>
+  </div>
+  <button class="wide" id="back">Back to dashboard</button>
+</section>
+<p id="msg"></p>
+
+<script>
+const $ = (s) => document.querySelector(s);
+const msg = (t) => { $('#msg').textContent = t || ''; };
+let recent = [];
+try { recent = JSON.parse(localStorage.getItem('watchRecent') || '[]'); } catch {}
+
+function drawRecent() {
+  $('#recent').replaceChildren(...recent.map((u) => {
+    const b = document.createElement('button');
+    b.textContent = u.replace(/^https?:\/\//, '');
+    b.onclick = () => { $('#u').value = u; $('#f').requestSubmit(); };
+    return b;
+  }));
+}
+
+async function call(body) {
+  try {
+    const r = await fetch('/api/watch', { method: body ? 'POST' : 'GET', headers: { 'Content-Type': 'application/json' }, body: body && JSON.stringify(body) });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error || r.status);
+    return j;
+  } catch (e) { msg(e.message); return null; }
+}
+
+function show(s) {
+  if (!s) return;
+  if (s.available === false) { msg('The Pi browser is not reachable. Restart the kiosk.'); return; }
+  $('#now').classList.toggle('hide', !s.active);
+  if (!s.active) return;
+  $('#title').textContent = s.title || s.url;
+  const p = s.player;
+  $('#fill').style.width = p && p.d ? `${Math.min(100, (p.t / p.d) * 100)}%` : '0';
+}
+
+$('#f').onsubmit = async (e) => {
+  e.preventDefault();
+  const u = $('#u').value.trim();
+  msg('Opening…');
+  const s = await call({ action: 'open', url: u });
+  if (!s) return;
+  msg('');
+  recent = [u, ...recent.filter((x) => x !== u)].slice(0, 6);
+  try { localStorage.setItem('watchRecent', JSON.stringify(recent)); } catch {}
+  drawRecent();
+  show(s);
+};
+document.querySelectorAll('[data-a]').forEach((b) => {
+  b.onclick = async () => show(await call({ action: b.dataset.a, value: b.dataset.v === undefined ? undefined : Number(b.dataset.v) }));
+});
+$('#back').onclick = async () => show(await call({ action: 'close' }));
+
+drawRecent();
+(async function poll() { show(await call()); setTimeout(poll, 3000); })();
+</script>
+</body>
+</html>

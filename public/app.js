@@ -4,7 +4,7 @@ const fmtTime = (ms) => { const s = Math.max(0, Math.floor(ms / 1000)); return `
 const fmtIn = (ms) => { if (ms <= 0) return 'now'; const m = Math.round(ms / 60000); return m >= 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m}m`; };
 const CIRC = 264;
 
-let st = null, skew = 0, sp = null, art = '';
+let st = null, skew = 0, sp = null, art = '', boot = null;
 
 // ---- clock ----
 function tickClock() {
@@ -142,13 +142,68 @@ $('#todolist').addEventListener('click', async (e) => {
   poll();
 });
 
+// ---- weather ----
+const WX = { clear: '☀', partly: '⛅', cloud: '☁', fog: '≋', rain: '☂', snow: '❄', storm: '⚡' };
+function renderWeather() {
+  const w = st?.weather;
+  $('#wx').hidden = !w;
+  if (!w) return;
+  $('#wxicon').textContent = (WX[w.kind] || '☁') + '︎';
+  $('#wxtemp').textContent = `${w.high}° / ${w.low}°`;
+}
+
+// ---- steps (pushed from an iPhone Shortcut) ----
+function renderSteps() {
+  const s = st?.steps, el = $('#steps');
+  el.hidden = !s;
+  if (!s) return;
+  const b = document.createElement('b'); b.textContent = s.steps.toLocaleString();
+  el.replaceChildren(b, ' steps');
+}
+
+// ---- next calendar event ----
+const hhmm = (ms) => new Date(ms).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: false });
+function renderNext() {
+  const el = $('#next'), e = st?.calendar;
+  el.hidden = !e;
+  if (!e) return;
+  const now = Date.now() + skew;
+  let when;
+  if (e.start <= now) when = `until ${hhmm(e.end)}`;
+  else if (e.start - now < 60 * 60e3) when = `in ${fmtIn(e.start - now)}`;
+  else if (new Date(e.start).toDateString() === new Date(now).toDateString()) when = hhmm(e.start);
+  else when = `${new Date(e.start).toLocaleDateString([], { weekday: 'short' })} ${hhmm(e.start)}`;
+  const b = document.createElement('b'); b.textContent = e.title;
+  el.replaceChildren(b, ` · ${when}`);
+}
+setInterval(renderNext, 15000);
+
+// ---- status dot: green is quiet, amber says what is wrong ----
+function renderStatus() {
+  const h = st?.health, s = $('#status');
+  s.hidden = !h;
+  if (!h) return;
+  s.classList.toggle('warn', !h.ok);
+  $('#statustext').textContent = h.ok ? '' : h.issues.join(' · ');
+}
+
+// ---- dim after sunset (or 20:00-07:00 until a location is set) ----
+function renderNight() {
+  const now = Date.now() + skew, w = st?.weather;
+  const night = w?.sunset ? now < w.sunrise || now > w.sunset : (() => { const h = new Date(now).getHours(); return h >= 20 || h < 7; })();
+  document.body.classList.toggle('night', night);
+}
+setInterval(renderNight, 60000);
+
 // ---- polling ----
 async function poll() {
   try {
     const r = await fetch('/api/state', { cache: 'no-store' });
     st = await r.json(); skew = st.now - Date.now();
+    if (boot && st.boot !== boot) return location.reload(); // server was updated or restarted
+    boot = st.boot;
     sp = st.spotify; if (sp) sp.fetchedAtLocal = Date.now();
-    renderPlayer(); renderUsage();
+    renderPlayer(); renderUsage(); renderWeather(); renderSteps(); renderNext(); renderStatus(); renderNight();
   } catch {}
 }
 poll(); setInterval(poll, 2000);

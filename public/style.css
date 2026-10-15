@@ -26,6 +26,20 @@ header { grid-column: 1 / -1; display: flex; align-items: baseline; gap: 2vw; }
 #clock { font-size: clamp(48px, 9vh, 120px); font-weight: 200; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
 #date { font-size: clamp(14px, 2.4vh, 26px); color: var(--dim); font-weight: 400; letter-spacing: .02em; }
 
+#steps { margin-left: auto; font-size: clamp(14px, 2.4vh, 26px); color: var(--dim); font-variant-numeric: tabular-nums; }
+#steps b { color: var(--fg); font-weight: 400; }
+#steps:not([hidden]) + #wx { margin-left: 2vw; }
+#wx { margin-left: auto; display: flex; align-items: baseline; gap: .6em; font-size: clamp(16px, 3vh, 34px); font-weight: 300; color: var(--fg); font-variant-numeric: tabular-nums; }
+#wxicon { color: var(--accent); transition: color 2.5s; }
+#wxtemp { color: var(--dim); }
+header { flex-wrap: wrap; }
+#status { display: flex; align-items: center; gap: .6em; font-size: clamp(11px, 1.7vh, 16px); color: var(--dim); }
+#dot { width: 8px; height: 8px; border-radius: 50%; background: #3ddc84; opacity: .55; }
+#status.warn #dot { background: #ffb020; opacity: 1; }
+#next { flex-basis: 100%; font-size: clamp(14px, 2.6vh, 28px); color: var(--dim); margin-top: -.5vh; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#next b { color: var(--fg); font-weight: 500; }
+body { transition: filter 4s ease; }
+body.night { filter: brightness(.6); }
 #player { display: flex; align-items: center; gap: 3vw; min-width: 0; }
 #art { flex: none; width: min(34vh, 30vw); aspect-ratio: 1; border-radius: 18px; overflow: hidden; background: var(--faint);
   box-shadow: 0 30px 80px -20px color-mix(in srgb, var(--accent) 55%, transparent); transition: box-shadow 2.5s ease, opacity .6s; }
